@@ -31,34 +31,13 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <string>
 #include <dirent.h>
 #include <boost/filesystem.hpp>
+#include <tiny_cnn/tiny_cnn.h>
 
-#include "tiny_cnn/tiny_cnn.h"
+#include "common.h"
 
 using namespace tiny_cnn;
 using namespace tiny_cnn::activation;
 using namespace std;
-
-
-std::vector<string> globVector(const string& pattern) {
-    std::string path = pattern;
-    std::vector<string> files;
-    DIR *dpdf = NULL;
-    struct dirent *epdf;
-
-    dpdf = opendir(path.c_str());
-    if (dpdf != NULL) {
-        while (epdf = readdir(dpdf)) {
-            printf("Filename: %s", epdf->d_name);
-            std::string str(epdf->d_name);
-            if (strcmp(epdf->d_name, "..") != 0 ) {
-                files.push_back(str);
-            }
-
-        }
-    }
-    closedir(dpdf);
-    return files;
-}
 
 void convert_image(const std::string& imagefilename,
                    double minv,
@@ -66,8 +45,11 @@ void convert_image(const std::string& imagefilename,
                    int w,
                    int h,
                    vec_t& data) {
-    auto img = cv::imread(imagefilename, cv::IMREAD_GRAYSCALE);
-    if (img.data == nullptr) return; // cannot open, or it's not an image
+    auto img = cv::imread(imagefilename, cv::IMREAD_GRAYSCALE  );
+    if (img.data == nullptr) {
+        std::cerr << "cannot open, or it's not an image..." << endl;
+        return; // cannot open, or it's not an image
+    }
 
     cv::Mat_<uint8_t> resized;
     cv::resize(img, resized, cv::Size(w, h));
@@ -87,7 +69,7 @@ void construct_net(N& nn) {
     const int n_fmaps2 = 128; ///< number of feature maps for lower layer
     const int n_fc = 64; ///< number of hidden units in fully-connected layer
 
-    nn << conv(112, 112, 7, 3, n_fmaps, padding::same)
+    nn << conv(112, 112, 7, 1, n_fmaps, padding::same)
        << max_pool(112, 112, n_fmaps, 2)
        << conv(56, 56, 7, n_fmaps, n_fmaps, padding::same)
        << max_pool(56, 56, n_fmaps, 2)
@@ -116,45 +98,35 @@ void train_cifar10(string data_dir_path, string test_dir_path, double learning_r
 
 
     // convert imagefile to vec_t
-    std::vector<string>  imagefiles = globVector(data_dir_path);
-    std::cout << "trian image path is:" << data_dir_path << ", " << imagefiles.size()
+    std::vector<path> ret;
+    get_all_files(data_dir_path, ".jpg", ret);
+
+    std::cout << "train image path is:" << data_dir_path << ", " << ret.size()
               << " of images" << std::endl;
 
-    for (size_t it = 0; it < imagefiles.size(); it++) {
+    for (size_t it = 0; it < ret.size(); it++) {
         uint8_t label = (uint8_t) it;
         train_labels.push_back(label);
         vec_t data;
-        std::string strPath = data_dir_path + "/" + imagefiles[it];
+        std::string strPath = ret[it].string();
         convert_image(strPath, -1.0, 1.0, 112, 112, data);
         std::cout << "train image is converted: " << strPath << std::endl;
         train_images.push_back(data);
     }
 
-    /*
-        for (int i = 1; i <= 5; i++) {
-            parse_cifar10(data_dir_path + "/data_batch_" + to_string(i) + ".bin",
-                          &train_images, &train_labels, -1.0, 1.0, 0, 0);
-        }
-    */
-
-    imagefiles.clear();
-    imagefiles = globVector(test_dir_path);
-    for (size_t it = 0; it < imagefiles.size(); it++) {
+    ret.clear();
+    get_all_files(test_dir_path, ".jpg", ret);
+    for (size_t it = 0; it < ret.size(); it++) {
         uint8_t label = (uint8_t) it;
         test_labels.push_back(label);
         vec_t data;
-        std::string strPath = test_dir_path + "/" + imagefiles[it];
+        std::string strPath = ret[it].string();
         convert_image(strPath, -1.0, 1.0, 112, 112, data);
         std::cout << "test image is converted: " << strPath << std::endl;
         test_images.push_back(data);
     }
-    /*
-        parse_cifar10(data_dir_path + "/test_batch.bin",
-                      &test_images, &test_labels, -1.0, 1.0, 0, 0);
-    */
-    cout << "start learning" << endl;
 
-    progress_display disp(train_images.size());
+    progress_display disp(ret.size());
     timer t;
     const int n_minibatch = 10; ///< minibatch size
     const int n_train_epochs = 30; ///< training duration
@@ -175,8 +147,10 @@ void train_cifar10(string data_dir_path, string test_dir_path, double learning_r
         disp += n_minibatch;
     };
 
+    cout << "start training...." << endl;
     // training
-    nn.train<cross_entropy>(optimizer, train_images, train_labels, n_minibatch, n_train_epochs, on_enumerate_minibatch, on_enumerate_epoch);
+    nn.train<cross_entropy>(optimizer, train_images, train_labels,
+                            n_minibatch, n_train_epochs, on_enumerate_minibatch, on_enumerate_epoch);
 
     cout << "end training." << endl;
 
