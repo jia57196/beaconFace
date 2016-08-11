@@ -43,3 +43,6 @@ file(GLOB MNISTN_SRC_FILES        ${PROJECT_SOURCE_DIR}/src/*.cpp)
 
 add_executable(mnisten ${MNISTN_SRC_FILES}) 
 target_link_libraries(mnisten ${Boost_LIBRARIES} ${OpenCV_LIBS} )
+
+
+#mnisten -d ~/00-code/tiny-cnn/data/lfw2 -o lfwa -n 0 -s 112x112
